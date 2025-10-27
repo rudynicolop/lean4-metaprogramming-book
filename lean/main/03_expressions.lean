@@ -343,3 +343,80 @@ allows us to more conveniently construct and destruct larger expressions.
 9. Create expression `fun (p : Prop) => (λ hP : p => hP)`.
 10. [**Universe levels**] Create expression `Type 6`.
 -/
+
+-- 1. Create expression `1 + 2` with `Expr.app`.
+def constOnePlusTwo : Expr :=
+  Expr.app (Expr.app (.const ``Nat.add []) (natExpr 1)) (natExpr 2)
+
+#eval constOnePlusTwo
+
+elab "constOnePlusTwo" : term => return constOnePlusTwo
+
+#check constOnePlusTwo
+#eval constOnePlusTwo
+
+-- 2. Create expression `1 + 2` with `Lean.mkAppN`.
+def constOnePlusTwo₂ : Expr :=
+  mkAppN (.const ``Nat.add []) #[natExpr 1, natExpr 2]
+
+#eval constOnePlusTwo₂
+
+elab "constOnePlusTwo₂" : term => return constOnePlusTwo₂
+
+#check constOnePlusTwo₂
+#eval constOnePlusTwo₂
+
+-- 3. Create expression `fun x => 1 + x`.
+def funAddOne : Expr :=
+  .lam `x (.const ``Nat [])
+    (mkAppN (.const ``Nat.add []) #[natExpr 1, .bvar 0])
+    BinderInfo.default
+
+#eval funAddOne
+
+elab "funAddOne" : term => return funAddOne
+
+#check funAddOne
+
+-- 4. [**De Bruijn Indexes**] Create expression `fun a, fun b, fun c, (b * a) + c`.
+def funDeBruijn : Expr :=
+  .lam `a (.const ``Nat [])
+    (.lam `b (.const ``Nat [])
+      (.lam `c (.const ``Nat [])
+        (mkAppN (.const ``Nat.add [])
+          #[(mkAppN (.const ``Nat.mul []) #[.bvar 1, .bvar 2]), .bvar 0])
+        BinderInfo.default)
+      BinderInfo.default)
+    BinderInfo.default
+
+#eval funDeBruijn
+
+elab "funDeBruijn" : term => return funDeBruijn
+
+#check funDeBruijn
+
+-- 5. Create expression `fun x y => x + y`.
+def funAddAnon : Expr :=
+  .lam `x (.const ``Nat [])
+    (.lam `y (.const ``Nat [])
+      (mkAppN (.const ``Nat.add []) #[.bvar 1, .bvar 0])
+      BinderInfo.default)
+    BinderInfo.default
+
+#eval funAddAnon
+
+elab "funAddAnon" : term => return funAddAnon
+
+#check funAddAnon
+
+-- 6. Create expression `fun x, String.append "hello, " x`.
+def funStrAppend : Expr :=
+  .lam `x (.const ``String [])
+    (mkAppN (.const ``String.append []) #[.lit $ Lean.Literal.strVal "hello" , .bvar 0])
+    BinderInfo.default
+
+#eval funStrAppend
+
+elab "funStrAppend" : term => return funStrAppend
+
+#check funStrAppend
