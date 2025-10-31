@@ -420,3 +420,61 @@ def funStrAppend : Expr :=
 elab "funStrAppend" : term => return funStrAppend
 
 #check funStrAppend
+
+-- 7. Create expression `∀ x : Prop, x ∧ x`.
+
+def propImpl (P Q : Expr) : Expr :=
+  .forallE `p P Q BinderInfo.default
+
+elab P:term "⟹" Q:term : term =>
+  open Lean Elab Term in
+  try
+    let p ← elabType P
+    let q ← elabType Q
+    let pImpq := propImpl p q
+    -- Lean.logInfo m!"p ⟹ q := {pImpq}"
+    return pImpq
+  catch | _ => throwError "digga bitte"
+
+#check Nat ⟹ Bool ⟹ Bool
+
+#check (Nat ⟹ Bool) ⟹ Bool
+
+theorem myImpl_correct (P Q : Prop) : (P → Q) ↔ (P ⟹ Q) := by
+  rfl
+
+def propConj (P Q : Expr) : Expr :=
+  .forallE `R (.sort .zero)
+    -- need to increase de bruijn indices because of `propImpl`
+    (propImpl (propImpl P (propImpl Q (.bvar 2))) (.bvar 1))
+    BinderInfo.default
+
+elab P:term "⊗" Q:term : term =>
+  open Lean Elab Term in
+  try
+    -- Lean.logInfo m!"P: {P}"
+    let p ← elabType P
+    -- Lean.logInfo m!"Q: {Q}"
+    let q ← elabType Q
+    -- Lean.logInfo m!"p: {p}"
+    -- Lean.logInfo m!"q: {q}"
+    let pAndq := propConj p q
+    -- Lean.logInfo m!"p ⊗ q := {pAndq}"
+    return pAndq
+  catch | _ => throwError "nah, dogshit"
+
+theorem myAnd_correct (P Q : Prop) : (P ∧ Q) ↔ (P ⊗ Q) := by
+  constructor
+  · rintro ⟨hp, hq⟩ R hpqr
+    apply hpqr hp hq
+  · intro h; apply h
+    intro hp hq
+    constructor <;> assumption
+
+def forallPropConjDup : Expr :=
+  .forallE `x (.sort .zero)
+    -- need to fix debruijn indicies...
+    (propConj (.bvar 0) (.bvar 0))
+    BinderInfo.default
+
+-- 8. Create expression `Nat → String`.
