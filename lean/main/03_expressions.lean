@@ -412,7 +412,7 @@ elab "funAddAnon" : term => return funAddAnon
 -- 6. Create expression `fun x, String.append "hello, " x`.
 def funStrAppend : Expr :=
   .lam `x (.const ``String [])
-    (mkAppN (.const ``String.append []) #[.lit $ Lean.Literal.strVal "hello" , .bvar 0])
+    (mkAppN (.const ``String.append []) #[.lit <| Lean.Literal.strVal "hello" , .bvar 0])
     BinderInfo.default
 
 #eval funStrAppend
