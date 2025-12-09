@@ -423,8 +423,11 @@ elab "funStrAppend" : term => return funStrAppend
 
 -- 7. Create expression `∀ x : Prop, x ∧ x`.
 
+-- #find (Nat → Nat) → Expr → Expr
+
+-- `P → Q`
 def propImpl (P Q : Expr) : Expr :=
-  .forallE `p P Q BinderInfo.default
+  .forallE `p P (Q.liftLooseBVars 0 1) BinderInfo.default
 
 elab P:term "⟹" Q:term : term =>
   open Lean Elab Term in
@@ -443,10 +446,12 @@ elab P:term "⟹" Q:term : term =>
 theorem myImpl_correct (P Q : Prop) : (P → Q) ↔ (P ⟹ Q) := by
   rfl
 
+-- `P ∧ Q`
 def propConj (P Q : Expr) : Expr :=
   .forallE `R (.sort .zero)
-    -- need to increase de bruijn indices because of `propImpl`
-    (propImpl (propImpl P (propImpl Q (.bvar 2))) (.bvar 1))
+    (propImpl
+      (propImpl (P.liftLooseBVars 0 1)
+        (propImpl (Q.liftLooseBVars 0 1) (.bvar 0))) (.bvar 0))
     BinderInfo.default
 
 elab P:term "⊗" Q:term : term =>
@@ -471,10 +476,47 @@ theorem myAnd_correct (P Q : Prop) : (P ∧ Q) ↔ (P ⊗ Q) := by
     intro hp hq
     constructor <;> assumption
 
+-- `∀ x : Prop, x ∧ x`.
 def forallPropConjDup : Expr :=
   .forallE `x (.sort .zero)
-    -- need to fix debruijn indicies...
     (propConj (.bvar 0) (.bvar 0))
     BinderInfo.default
 
+elab "forallPropConjDup" : term => return forallPropConjDup
+
+#check forallPropConjDup
+
+theorem forallPropConjDup_correct :
+    forallPropConjDup ↔ ∀ x : Prop, x ∧ x := by
+  apply forall_congr'
+  intro x
+  rw [←myAnd_correct]
+
 -- 8. Create expression `Nat → String`.
+#check Nat ⟹ Bool
+
+-- 9. Create expression `fun (p : Prop) => (λ hP : p => hP)`.
+elab "funProp₁" P:term : term =>
+  open Lean Elab Term in
+  try
+    let p ← elabType P
+    return .lam `hP p (.bvar 0) BinderInfo.default
+  catch | _ => throwError "zam"
+
+#check fun p : Prop ↦ funProp₁ p
+
+def funProp₂ : Expr :=
+  .lam `p (.sort 0)
+    (.lam `hP (.bvar 0) (.bvar 0) BinderInfo.default)
+    BinderInfo.default
+
+elab "funProp₂" : term => return funProp₂
+
+#check funProp₂
+
+-- 10. [**Universe levels**] Create expression `Type 6`.
+def type₆ : Expr := .sort 7
+
+elab "type₆" : term => return type₆
+
+#check type₆
