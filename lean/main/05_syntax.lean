@@ -14,6 +14,8 @@ commands, for those that are not here is a brief recap:
 -/
 
 import Lean
+import Lean.Parser.Syntax
+import Batteries.Util.ExtendedBinder
 
 -- XOR, denoted \oplus
 infixl:60 " ⊕ " => fun l r => (!l && r) || (l && !r)
@@ -288,6 +290,8 @@ syntax binNumber' := binDigit,* -- note the *
 syntax "emptyBin(" binNumber' ")" : term
 #check_failure emptyBin() -- elaboration function hasn't been implemented but parsing passes
 
+#check_failure emptyBin(Z, O, Z, Z, O)
+
 /-!
 Note that nothing is limiting us to only using one syntax combinator per parser,
 we could also have written all of this inline:
@@ -391,6 +395,7 @@ def isAdd11 : Syntax → Bool
   | _ => false
 
 #eval isAdd11 (Syntax.mkApp (mkIdent `Nat.add) #[Syntax.mkNumLit "1", Syntax.mkNumLit "1"]) -- true
+#eval isAdd11 (mkNode `«term_+_» #[Syntax.mkNumLit "1", mkAtom "+", Syntax.mkNumLit "1"]) -- false?
 #eval isAdd11 (Syntax.mkApp (mkIdent `Nat.add) #[mkIdent `foo, Syntax.mkNumLit "1"]) -- false
 
 /-!
@@ -450,12 +455,14 @@ declare_syntax_cat arith
 syntax num : arith
 syntax arith "-" arith : arith
 syntax arith "+" arith : arith
+syntax arith "*" arith : arith
 syntax "(" arith ")" : arith
 
 partial def denoteArith : TSyntax `arith → Nat
   | `(arith| $x:num) => x.getNat
   | `(arith| $x:arith + $y:arith) => denoteArith x + denoteArith y
   | `(arith| $x:arith - $y:arith) => denoteArith x - denoteArith y
+  | `(arith| $x:arith * $y:arith) => denoteArith x * denoteArith y
   | `(arith| ($x:arith)) => denoteArith x
   | _ => 0
 
@@ -467,6 +474,14 @@ def test : Elab.TermElabM Nat := do
   pure (denoteArith stx)
 
 #eval test -- 11
+
+#eval show Elab.TermElabM Nat from do
+  let stx ← `(arith| (7 * 6) + 1)
+  return denoteArith stx
+
+#eval show Elab.TermElabM Nat from do
+  let stx ← `(arith| 7 * 6 + 1)
+  return denoteArith stx
 
 /-!
 Feel free to play around with this example and extend it in whatever way
@@ -630,3 +645,149 @@ the bound variables, we refer the reader to the macro chapter.
     Hint: you need Batteries installed in your Lean project for these imports to work.
 
 -/
+
+/-
+1. Create an "urgent minus 💀" notation such that `5 * 8 💀 4` returns `20`, and `8 💀 6 💀 1` returns `3`.
+
+    **a)** Using `notation` command.
+    **b)** Using `infix` command.
+    **c)** Using `syntax` command.
+
+    Hint: multiplication in Lean 4 is defined as `infixl:70 " * " => HMul.hMul`.
+-/
+
+namespace oneA
+
+-- **a)** Using `notation` command.
+scoped notation:71 x:72 " 💀 " y:71 => (x - y)
+
+#eval 5 * 8 💀 4
+#eval 8 💀 6 💀 1
+
+end oneA
+
+namespace oneB
+
+-- **b)** Using `infix` command.
+scoped infixr:71 " 💀 " => λ x y ↦ x - y
+
+#eval 5 * 8 💀 4
+#eval 8 💀 6 💀 1
+
+end oneB
+
+namespace oneC
+
+-- **c)** Using `syntax` command.
+scoped syntax:71 term:72 " 💀 " term:71 : term
+scoped macro_rules | `($x:term 💀 $y:term) => `($x - $y)
+
+#eval 5 * 8 💀 4
+#eval 8 💀 6 💀 1
+
+end oneC
+
+/-
+3. Create a `syntax` rule that would accept the following commands:
+
+    - `red red red 4`
+    - `blue 7`
+    - `blue blue blue blue blue 18`
+
+    (So, either all `red`s followed by a number; or all `blue`s followed by a number; `red blue blue 5` - shouldn't work.)
+
+    Use the following code template:
+
+    ```lean
+    syntax (name := colors) ...
+    -- our "elaboration function" that infuses syntax with semantics
+    @[command_elab colors] def elabColors : CommandElab := λ stx => Lean.logInfo "success!"
+    ```
+-/
+
+namespace three
+
+syntax red := "red"
+syntax blue := "blue"
+
+syntax redSeq := red+
+syntax blueSeq := blue+
+
+syntax (name := colors) (redSeq <|> blueSeq) num : command
+
+open Lean Elab Command Term
+
+@[command_elab colors]
+def elabColors : CommandElab := λ _ ↦ Lean.logInfo "success!"
+
+blue blue 443
+red red red 4
+
+red red red 4
+blue 7
+blue blue blue blue blue 18
+
+end three
+
+/-
+4. Mathlib has a `#help option` command that displays all options available in the current environment, and their descriptions. `#help option pp.r` will display all options starting with a "pp.r" substring.
+
+    Create a `syntax` rule that would accept the following commands:
+
+    - `#better_help option`
+    - `#better_help option pp.r`
+    - `#better_help option some.other.name`
+
+    Use the following template:
+
+    ```lean
+    syntax (name := help) ...
+    -- our "elaboration function" that infuses syntax with semantics
+    @[command_elab help] def elabHelp : CommandElab := λ stx => Lean.logInfo "success!"
+    ```
+-/
+
+namespace four
+
+syntax (name := help) "#better_help" "option" ( "pp.r" <|> "some.other.name" )? : command
+
+open Lean Elab Command Term
+
+-- our "elaboration function" that infuses syntax with semantics
+@[command_elab help]
+def elabHelp : CommandElab := λ _ ↦ Lean.logInfo "success!"
+
+#better_help option
+#better_help option pp.r
+#better_help option some.other.name
+
+end four
+
+/-
+5. Mathlib has a ∑ operator. Create a `syntax` rule that would accept the following terms:
+
+    - `∑ x in { 1, 2, 3 }, x^2`
+    - `∑ x in { "apple", "banana", "cherry" }, x.length`
+
+    Use the following template:
+
+    ```lean
+    import Batteries.Classes.SetNotation
+    import Batteries.Util.ExtendedBinder
+    syntax (name := bigsumin) ...
+    -- our "elaboration function" that infuses syntax with semantics
+    @[term_elab bigsumin] def elabSum : TermElab := λ stx tp => return mkNatLit 666
+    ```
+
+    Hint: use the `Batteries.ExtendedBinder.extBinder` parser.
+    Hint: you need Batteries installed in your Lean project for these imports to work.
+-/
+
+open Batteries.ExtendedBinder Lean Elab Command Term
+
+syntax (name := bigsumin) "∑" extBinder "in" term "," term : term
+-- our "elaboration function" that infuses syntax with semantics
+@[term_elab bigsumin] def elabSum : TermElab := λ stx tp => return mkNatLit 666
+
+#eval ∑ x in { 1, 2, 3 } , x^2
+#eval ∑ x in { "apple", "banana", "cherry" }, x.length
