@@ -657,12 +657,18 @@ allow us to unfold the constants:
 #eval withTransparency .reducible $ whnf' `(List.append [1] [2])
 -- List.append [1] [2]
 
+#eval withTransparency .all $ whnf' `(List.append [1] [2])
+
+#eval withTransparency .all $ whnf' `(List.append [] [2])
+
 /-!
 Lambdas are in WHNF:
 -/
 
 #eval whnf' `(λ x : Nat => x)
 -- fun x => x
+
+#eval whnf' `(λ x : Nat => x + (1 + 2))
 
 /-!
 Foralls are in WHNF:
@@ -671,12 +677,16 @@ Foralls are in WHNF:
 #eval whnf' `(∀ x, x > 0)
 -- ∀ (x : Nat), x > 0
 
+#eval whnf' `(∀ x, x > 0 + 1)
+
 /-!
 Sorts are in WHNF:
 -/
 
 #eval whnf' `(Type 3)
 -- Type 3
+
+#eval whnf' `(Type (3 + 1))
 
 /-!
 Literals are in WHNF:
@@ -1066,6 +1076,11 @@ There are many useful variants of `forallTelescope`:
 Using one of the telescope functions, we can implement our own `apply` tactic:
 -/
 
+#check forallTelescope
+#check forallMetaTelescope
+#check forallTelescopeReducing
+#check forallMetaTelescopeReducing
+
 def myApply (goal : MVarId) (e : Expr) : MetaM (List MVarId) := do
   -- Check that the goal is not yet assigned.
   goal.checkNotAssigned `myApply
@@ -1329,3 +1344,146 @@ Notice that changing the type of the metavariable from `Nat` to, for example, `S
 15. [**Backtracking**] Check that the expressions `?a + Int` and `"hi" + ?b` are definitionally equal with `isDefEq` (make sure to use the proper types or `Option.none` for the types of your metavariables!).
 Use `saveState` and `restoreState` to revert metavariable assignments.
 -/
+
+
+/-
+1. [**Metavariables**] Create a metavariable with type `Nat`, and assign to it value `3`.
+Notice that changing the type of the metavariable from `Nat` to, for example, `String`, doesn't raise any errors - that's why, as was mentioned, we must make sure *"(a) that `val` must have the target type of `mvarId` and (b) that `val` must only contain `fvars` from the local context of `mvarId`"*.
+-/
+#eval show MetaM Unit from do
+  -- Create frsh metavariable of type `Nat`.
+  let mvar ← mkFreshExprMVar (Expr.const ``Nat []) (userName := `mvar)
+  IO.println s!"meta: {← instantiateMVars mvar}"
+  -- Assign `mvar : Nat := 3`.
+  mvar.mvarId!.assign <| mkNatLit 3
+  IO.println s!"meta: {← instantiateMVars mvar}"
+
+/-
+2. [**Metavariables**] What would `instantiateMVars (Lean.mkAppN (Expr.const 'Nat.add []) #[mkNatLit 1, mkNatLit 2])` output?
+-/
+
+#check instantiateMVars
+
+#eval show MetaM Unit from do
+  let foo ← instantiateMVars (Lean.mkAppN (Expr.const `Nat.add []) #[mkNatLit 1, mkNatLit 2])
+  IO.println foo
+
+/-
+3. [**Metavariables**] Fill in the missing lines in the following code.
+
+    ```lean
+    #eval show MetaM Unit from do
+      let oneExpr := Expr.app (Expr.const `Nat.succ []) (Expr.const ``Nat.zero [])
+      let twoExpr := Expr.app (Expr.const `Nat.succ []) oneExpr
+
+      -- Create `mvar1` with type `Nat`
+      -- let mvar1 ← ...
+      -- Create `mvar2` with type `Nat`
+      -- let mvar2 ← ...
+      -- Create `mvar3` with type `Nat`
+      -- let mvar3 ← ...
+
+      -- Assign `mvar1` to `2 + ?mvar2 + ?mvar3`
+      -- ...
+
+      -- Assign `mvar3` to `1`
+      -- ...
+
+      -- Instantiate `mvar1`, which should result in expression `2 + ?mvar2 + 1`
+      ...
+    ```
+-/
+
+#eval show MetaM Unit from do
+  let oneExpr := Expr.app (Expr.const `Nat.succ []) (Expr.const ``Nat.zero [])
+  let twoExpr := Expr.app (Expr.const `Nat.succ []) oneExpr
+
+  -- Create `mvar1` with type `Nat`
+  let mvar1 ← mkFreshExprMVar (Expr.const ``Nat []) (userName := `mvar1)
+  -- Create `mvar2` with type `Nat`
+  let mvar2 ← mkFreshExprMVar (Expr.const ``Nat []) (userName := `mvar2)
+  -- Create `mvar3` with type `Nat`
+  let mvar3 ← mkFreshExprMVar (Expr.const ``Nat []) (userName := `mvar3)
+
+  -- Assign `mvar1` to `2 + ?mvar2 + ?mvar3`
+  mvar1.mvarId!.assign <|
+    Lean.mkAppN (.const `Nat.add [])
+      #[
+        twoExpr,
+        Lean.mkAppN (.const `Nat.add []) #[mvar2, mvar3]
+      ]
+  IO.println s!"mvar1 := {← instantiateMVars mvar1}"
+
+  -- Assign `mvar3` to `1`
+  mvar3.mvarId!.assign oneExpr
+  IO.println s!"mvar3 := {← instantiateMVars mvar3}"
+
+  -- Instantiate `mvar1`, which should result in expression `2 + ?mvar2 + 1`
+  IO.println s!"mvar1 := {← instantiateMVars mvar1}"
+
+/-
+4. [**Metavariables**] Consider the theorem `red`, and tactic `explore` below.
+  **a)** What would be the `type` and `userName` of metavariable `mvarId`?
+  **b)** What would be the `type`s and `userName`s of all local declarations in this metavariable's local context?
+  Print them all out.
+
+    ```lean
+    elab "explore" : tactic => do
+      let mvarId : MVarId ← Lean.Elab.Tactic.getMainGoal
+      let metavarDecl : MetavarDecl ← mvarId.getDecl
+
+      IO.println "Our metavariable"
+      -- ...
+
+      IO.println "All of its local declarations"
+      -- ...
+
+    theorem red (hA : 1 = 1) (hB : 2 = 2) : 2 = 2 := by
+      explore
+      sorry
+    ```
+-/
+
+elab "explore" : tactic => do
+  let mvarId : MVarId ← Lean.Elab.Tactic.getMainGoal
+  let metavarDecl : MetavarDecl ← mvarId.getDecl
+
+  IO.println "Our metavariable"
+  IO.println s!"\n{metavarDecl.userName}: {metavarDecl.type}"
+
+  IO.println "All of its local declarations"
+  for ldecl in metavarDecl.lctx do
+    if ldecl.isImplementationDetail then
+      continue
+    IO.println s! "\n{ldecl.userName} : {ldecl.type}"
+
+theorem red (hA : 1 = 1) (hB : 2 = 2) : 2 = 2 := by
+  explore
+  sorry
+
+/-
+5. [**Metavariables**] Write a tactic `solve` that proves the theorem `red`.
+-/
+
+def solveRedTactic (goal : MVarId) : MetaM (List MVarId) := do
+  -- Check that the goal is not yet assigned.
+  goal.checkNotAssigned `myApply
+  -- Operate in the local context of the goal.
+  goal.withContext do
+    -- Get the goal's target type.
+    let target ← goal.getType
+    -- Try to solve goal with local assumptions.
+    for ldecl in ← getLCtx do
+      -- Check whether local hypothesis matches goal.
+      if ← isDefEq target ldecl.type then
+        -- If we get a hit, assign to the goal and return.
+        goal.assign ldecl.toExpr
+        return []
+    -- If we did not find a matching goal, throw an error.
+    throwTacticEx `solveRedTactic goal m!"no assumptions matching {target}"
+
+elab "solveRed" : tactic =>
+  Elab.Tactic.liftMetaTactic (solveRedTactic ·)
+
+theorem red₂ (hA : 1 = 1) (hB : 2 = 2) : 2 = 2 := by
+  solveRed
