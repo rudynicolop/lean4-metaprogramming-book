@@ -1487,3 +1487,219 @@ elab "solveRed" : tactic =>
 
 theorem red₂ (hA : 1 = 1) (hB : 2 = 2) : 2 = 2 := by
   solveRed
+
+/-
+6. [**Computation**] What is the normal form of the following expressions:
+  **a)** `fun x => x` of type `Bool → Bool`
+  **b)** `(fun x => x) ((true && false) || true)` of type `Bool`
+  **c)** `800 + 2` of type `Nat`
+-/
+
+#reduce fun x => x
+
+#reduce (fun x => x) ((true && false) || true)
+
+#reduce 800 + 2
+
+/-
+7. [**Computation**] Show that `1` created with `Expr.lit (Lean.Literal.natVal 1)` is definitionally equal to an expression created with `Expr.app (Expr.const ``Nat.succ []) (Expr.const ``Nat.zero [])`.
+-/
+
+#eval show MetaM Bool from do
+  let oneLit := Expr.lit (Lean.Literal.natVal 1)
+  let oneAdd := Expr.app (Expr.const ``Nat.succ []) (Expr.const ``Nat.zero [])
+  isDefEq oneLit oneAdd
+
+/-
+8. [**Computation**] Determine whether the following expressions are definitionally equal. If `Lean.Meta.isDefEq` succeeds, and it leads to metavariable assignment, write down the assignments.
+  **a)** `5 =?= (fun x => 5) ((fun y : Nat → Nat => y) (fun z : Nat => z))`
+    succeeds
+
+  **b)** `2 + 1 =?= 1 + 2`
+    succeeds
+
+  **c)** `?a =?= 2`, where `?a` has a type `String`
+    fails
+
+  **d)** `?a + Int =?= "hi" + ?b`, where `?a` and `?b` don't have a type
+    succeeds, `Int` is a constant, and `?b := Int`
+
+  **e)** `2 + ?a =?= 3`
+    fails
+
+  **f)** `2 + ?a =?= 2 + 1`
+    succeeds, `?a := 1`
+-/
+
+
+/-
+9. [**Computation**] Write down what you expect the following code to output.
+-/
+
+@[reducible] def reducibleDef'     : Nat := 1 -- same as `abbrev`
+@[instance] def instanceDef'       : Nat := 2 -- same as `instance`
+def defaultDef'                    : Nat := 3
+@[irreducible] def irreducibleDef' : Nat := 4
+
+@[reducible] def sum := [reducibleDef', instanceDef', defaultDef', irreducibleDef']
+
+#eval show MetaM Unit from do
+let constantExpr := Expr.const `sum []
+
+Meta.withTransparency Meta.TransparencyMode.reducible do
+let reducedExpr ← Meta.reduce constantExpr
+dbg_trace (← ppExpr reducedExpr) -- ...
+
+Meta.withTransparency Meta.TransparencyMode.instances do
+let reducedExpr ← Meta.reduce constantExpr
+dbg_trace (← ppExpr reducedExpr) -- ...
+
+Meta.withTransparency Meta.TransparencyMode.default do
+let reducedExpr ← Meta.reduce constantExpr
+dbg_trace (← ppExpr reducedExpr) -- ...
+
+Meta.withTransparency Meta.TransparencyMode.all do
+let reducedExpr ← Meta.reduce constantExpr
+dbg_trace (← ppExpr reducedExpr) -- ...
+
+let reducedExpr ← Meta.reduce constantExpr
+dbg_trace (← ppExpr reducedExpr) -- ...
+
+/-
+10. [**Constructing Expressions**] Create expression `fun x => 1 + x` in two ways:
+  **a)** not idiomatically, with loose bound variables
+  **b)** idiomatically.
+  In what version can you use `Lean.mkAppN`? In what version can you use `Lean.Meta.mkAppM`?
+-/
+
+-- **a)** not idiomatically, with loose bound variables
+def plusOne₁ : Expr :=
+  .lam `x (.const ``Nat [])
+    (mkAppN (.const ``Nat.add []) #[Expr.lit <| .natVal 1, .bvar 0])
+    BinderInfo.default
+
+#eval ppExpr plusOne₁
+
+-- **b)** idiomatically.
+def plusOne₂ : MetaM Expr :=
+  withLocalDecl `x BinderInfo.default (.const ``Nat []) λ x => do
+    let body ← mkAppM ``Nat.add #[.lit (.natVal 1), x]
+    mkLambdaFVars #[x] body
+
+#eval show MetaM _ from do
+  ppExpr (← plusOne₂)
+
+/-
+11. [**Constructing Expressions**] Create expression `∀ (yellow: Nat), yellow`.
+-/
+
+def yellow₁ : Expr :=
+  .forallE `yellow (.const ``Nat []) (.bvar 0) BinderInfo.default
+
+#eval ppExpr yellow₁
+
+def yellow₂ : MetaM Expr :=
+  withLocalDecl `yellow BinderInfo.default (.const ``Nat []) λ yellow => do
+  mkForallFVars #[yellow] yellow
+
+#eval show MetaM _ from do
+  ppExpr (← yellow₂)
+
+/-
+12. [**Constructing Expressions**] Create expression `∀ (n : Nat), n = n + 1` in two ways:
+  **a)** not idiomatically, with loose bound variables
+  **b)** idiomatically.
+-/
+
+set_option pp.explicit true in
+#check (· = ·)
+
+-- **a)** not idiomatically, with loose bound variables
+def twelveA : Expr :=
+  Expr.forallE `n (.const ``Nat [])
+    (mkAppN (.const ``Eq []) #[.bvar 0, mkAppN (.const ``Nat.add []) #[.bvar 0, mkNatLit 1]])
+    .default
+
+#eval ppExpr twelveA
+
+-- **b)** idiomatically.
+def twelveB : MetaM Expr :=
+  withLocalDecl `n .default (.const ``Nat []) λ n => do
+    let rhs ← mkAppM ``Nat.add #[n, mkNatLit 1]
+    let eqn ← mkEq n rhs
+    mkForallFVars #[n] eqn
+
+#eval show MetaM _ from do
+  ppExpr (← twelveB)
+
+/-
+13. [**Constructing Expressions**] Create expression `fun (f : Nat → Nat), ∀ (n : Nat), f n = f (n + 1)` idiomatically.
+-/
+
+def thirteen : MetaM Expr := do
+  let natToNat ← mkArrow (.const ``Nat []) (.const ``Nat [])
+  withLocalDecl `f .default natToNat λ f ↦ do
+    let body ← withLocalDecl `n .default (.const ``Nat []) λ n ↦ do
+      let lhs := .app f n
+      let rhs := .app f (← mkAppM ``Nat.add #[n, mkNatLit 1])
+      let eqn ← mkEq lhs rhs
+      mkForallFVars #[n] eqn
+    mkLambdaFVars #[f] body
+
+#eval show MetaM _ from do
+  ppExpr (← thirteen)
+
+/-
+14. [**Constructing Expressions**] What would you expect the output of the following code to be?
+-/
+
+#eval show Lean.Elab.Term.TermElabM _ from do
+let stx : Syntax ← `(∀ (a : Prop) (b : Prop), a ∨ b → b → a ∧ a)
+let expr ← Elab.Term.elabTermAndSynthesize stx none
+
+let (_, _, conclusion) ← forallMetaTelescope expr
+dbg_trace conclusion -- ...
+
+let (_, _, conclusion) ← forallMetaBoundedTelescope expr 2
+dbg_trace conclusion -- ...
+
+let (_, _, conclusion) ← lambdaMetaTelescope expr
+dbg_trace conclusion -- ...
+
+/-
+15. [**Backtracking**] Check that the expressions `?a + Int` and `"hi" + ?b` are definitionally equal with `isDefEq` (make sure to use the proper types or `Option.none` for the types of your metavariables!).
+Use `saveState` and `restoreState` to revert metavariable assignments.
+-/
+
+#eval show MetaM Unit from do
+  -- Metavariable `?a`.
+  let mvara ← mkFreshExprMVar Option.none (userName := `a)
+
+  -- Metavariable `?b`.
+  let mvarb ← mkFreshExprMVar Option.none (userName := `b)
+
+  -- LHS
+  let lhs := mkAppN (.const ``Nat.add []) #[mvara, .const `Int []]
+
+  -- RHS
+  let rhs := mkAppN (.const ``Nat.add []) #[Lean.mkStrLit "hi", mvarb]
+
+  -- Nothing assigned yet:
+  IO.println s!"?a := {← instantiateMVars mvara}"
+  IO.println s!"?b := {← instantiateMVars mvarb}"
+
+  -- Save state
+  let s ← saveState
+
+  -- Result of equality check:
+  let equal? ← isDefEq lhs rhs
+  IO.println s!"?equal? := {equal?}"
+  IO.println s!"?a := {← instantiateMVars mvara}"
+  IO.println s!"?b := {← instantiateMVars mvarb}"
+
+  -- Restore state before check:
+  restoreState s
+
+  -- Back to nothing:
+  IO.println s!"?a := {← instantiateMVars mvara}"
+  IO.println s!"?b := {← instantiateMVars mvarb}"

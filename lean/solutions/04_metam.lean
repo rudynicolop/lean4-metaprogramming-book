@@ -226,6 +226,9 @@ def eleven : MetaM Expr :=
 #eval show MetaM _ from do
   dbg_trace (← eleven) -- forall (yellow : Nat), yellow
 
+#eval show MetaM _ from do
+  ppExpr (← eleven) -- forall (yellow : Nat), yellow
+
 /- ### 12. -/
 
 -- Non-idiomatic: we can only use `Lean.mkApp3`.
