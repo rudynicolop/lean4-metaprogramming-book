@@ -207,6 +207,7 @@ macro_rules
 
 #check cut_tuple (1, 2) -- (1, 2) : Nat × Nat
 #check cut_tuple (1, 2, 3) -- (2, 3) : Nat × Nat
+#check cut_tuple (1, 2, 3, 4) -- (2, 3, 4) : Nat × Nat × Nat
 
 /-!
 The last thing for this section will be so called "anti-quotation splices".
@@ -276,11 +277,15 @@ identifier from some syntax that it is including. For example:
 -- Applying this macro produces a function that binds a new identifier `x`.
 macro "const" e:term : term => `(fun x => $e)
 
+#eval (const 20) 10 -- 20
+
 -- But `x` can also be defined by a user
 def x : Nat := 42
 
 -- Which `x` should be used by the compiler in place of `$e`?
 #eval (const x) 10 -- 42
+
+#eval (const 10) x -- 10
 
 /-
 Given the fact that macros perform only syntactic translations one might

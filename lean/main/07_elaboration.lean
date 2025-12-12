@@ -170,6 +170,14 @@ elab "#findCElab " c:command : command => do
 #findCElab namespace Foo -- Your syntax may be elaborated by: [Lean.Elab.Command.elabNamespace]
 #findCElab #findCElab open Bar -- even itself!: Your syntax may be elaborated by: [«_aux_lean_elaboration___elabRules_command#findCElab__1»]
 
+#findCElab open Hi -- Your syntax may be elaborated by: [Lean.Elab.Command.elabOpen]
+
+#findCElab #mycommand1
+
+#findCElab #mycommand2
+
+#findCElab import
+
 /-!
 TODO: Maybe we should also add a mini project that demonstrates a
 non # style command aka a declaration, although nothing comes to mind right now.
@@ -397,3 +405,158 @@ elab "⟨⟨" args:term,* "⟩⟩" : term <= t => do
     **c)** using `elab`.
 
 -/
+
+-- 1.
+
+elab stx:term " ♥ " : term => do
+  let nExpr ← elabTermEnsuringType stx (mkConst `Nat)
+  return Expr.app (Expr.app (Expr.const `Nat.add []) nExpr) (mkNatLit 1)
+
+elab stx:term " ♥ " " ♥ " : term => do
+  let nExpr ← elabTermEnsuringType stx (mkConst `Nat)
+  return Expr.app (Expr.app (Expr.const `Nat.add []) nExpr) (mkNatLit 2)
+
+elab stx:term " ♥ " " ♥ " " ♥ " : term => do
+  let nExpr ← elabTermEnsuringType stx (mkConst `Nat)
+  return Expr.app (Expr.app (Expr.const `Nat.add []) nExpr) (mkNatLit 3)
+
+#check λ x : Nat ↦ x ♥
+
+#check λ x : Nat ↦ x ♥♥
+
+#check λ x : Nat ↦ x ♥♥♥
+
+#check λ x : Nat ↦ x ♥♥♥♥
+
+#check λ x : Nat ↦ x ♥♥♥♥♥♥♥♥
+
+/-
+2. Here is some syntax taken from a real mathlib command `alias`.
+
+    ```
+    syntax (name := our_alias) (docComment)? "our_alias " ident " ← " ident* : command
+    ```
+
+    We want `alias hi ← hello yes` to print out the identifiers after `←` - that is, "hello" and "yes".
+
+    Please add these semantics:
+-/
+
+-- **a)** using `syntax` + `@[command_elab alias] def elabOurAlias : CommandElab`.
+
+namespace twoA
+
+scoped syntax (name := our_alias) (docComment)? "our_alias " ident " ← " ident* : command
+
+@[command_elab twoA.our_alias]
+def ourAliasImpl : CommandElab := λ stx ↦ do
+  -- IO.println s!"stx := {stx}"
+  if let some rhs := stx[4]? then
+    -- IO.println s!"rhs := {rhs}"
+    -- IO.println s!"rhs.getArgs := {rhs.getArgs}"
+    for elem in rhs.getArgs do
+      IO.println elem.getId
+  else
+    throwUnsupportedSyntax
+
+our_alias hi ← hello yes
+our_alias zam ← the echos call
+
+end twoA
+
+-- **b)** using `syntax` + `elab_rules`.
+
+namespace twoB
+
+scoped syntax (name := our_alias) (docComment)? "our_alias " ident " ← " ident* : command
+
+elab_rules : command
+  | `(command | our_alias $lhs ← $rhs:ident*) =>
+    for elem in rhs do
+      IO.println elem.getId
+
+our_alias hi ← hello yes
+our_alias zam ← the echos call
+
+end twoB
+
+-- **c)** using `elab`.
+
+namespace twoC
+
+elab "our_alias " lhs:ident " ← " rhs:ident* : command => do
+  for elem in rhs do
+    IO.println elem.getId
+
+our_alias hi ← hello yes
+our_alias zam ← the echos call
+
+namespace twoC
+
+/-
+3. Here is some syntax taken from a real mathlib tactic `nth_rewrite`.
+
+    ```lean
+    open Parser.Tactic
+    syntax (name := nthRewriteSeq) "nth_rewrite " (config)? num rwRuleSeq (ppSpace location)? : tactic
+    ```
+
+    We want `nth_rewrite 5 [←add_zero a] at h` to print out `"rewrite location!"` if the user provided location, and `"rewrite target!"` if the user didn't provide location.
+
+    Please add these semantics:
+
+-/
+
+open Parser.Tactic
+
+-- **a)** using `syntax` + `@[tactic nthRewrite] def elabNthRewrite : Lean.Elab.Tactic.Tactic`.
+
+syntax (name := nthRewriteA) "nth_rewriteA " (config)? num rwRuleSeq (ppSpace location)? : tactic
+
+@[tactic nthRewriteA] def elabNthRewrite : Lean.Elab.Tactic.Tactic := λ stx ↦ do
+  match stx with
+  | `(tactic| nth_rewriteA $c:config $n:num $r:rwRuleSeq $l) =>
+    logInfo s!"rewrite location"
+  | `(tactic| nth_rewriteA $n:num $r:rwRuleSeq $l) =>
+    logInfo s!"rewrite location"
+  | `(tactic| nth_rewriteA $c:config $n:num $r:rwRuleSeq) =>
+    logInfo s!"rewrite target"
+  | `(tactic| nth_rewriteA $n:num $r:rwRuleSeq) =>
+    logInfo s!"rewrite target"
+  | _ =>
+    throwUnsupportedSyntax
+
+example (h : False) : True := by
+  nth_rewriteA 4 [Nat.or_comm, Int.add_comm]
+  nth_rewriteA 4 [Nat.or_comm, Int.add_comm] at h
+  sorry
+
+
+-- **b)** using `syntax` + `elab_rules`.
+
+syntax (name := nthRewriteB) "nth_rewriteB " (config)? num rwRuleSeq (ppSpace location)? : tactic
+
+elab_rules : tactic
+  | `(tactic| nth_rewriteB $[$cfg]? $n $rules $_loc) =>
+    Lean.logInfo "rewrite location!"
+  | `(tactic| nth_rewriteB $[$cfg]? $n $rules) =>
+    Lean.logInfo "rewrite target!"
+
+example (h : False) : True := by
+  nth_rewriteB 4 [Nat.or_comm, Int.add_comm]
+  nth_rewriteB 4 [Nat.or_comm, Int.add_comm] at h
+  sorry
+
+-- **c)** using `elab`.
+
+elab "nth_rewriteC " c:(config)? n:num r:rwRuleSeq l:(ppSpace location)? : tactic => do
+  match l with
+  | .some _ =>
+    Lean.logInfo "rewrite location!"
+  | .none =>
+    Lean.logInfo "rewrite target!"
+
+example (h : False) : True := by
+  nth_rewriteC 4 [Nat.or_comm, Int.add_comm]
+  nth_rewriteC 4 [Nat.or_comm, Int.add_comm] at h
+  sorry
