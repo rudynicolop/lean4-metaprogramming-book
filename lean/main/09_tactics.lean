@@ -337,6 +337,8 @@ with `lctx.findDeclM?`. We infer the type of declarations with
 goal with `Lean.Meta.isExprDefEq`:
 -/
 
+#check Lean.LocalContext.findDeclM?
+
 elab "custom_assump_1" : tactic =>
   Lean.Elab.Tactic.withMainContext do
     let goalType ← Lean.Elab.Tactic.getMainTarget
@@ -721,3 +723,56 @@ tactic infrastructure and the parsing front-end.
 
     Hint: **"P"** in `intro1P` and `introNP` stands for **"Preserve"**.
 -/
+
+-- 1.
+
+open Lean Elab Tactic Meta in
+elab "step_1" : tactic => withMainContext do
+  let mvarId ← getMainGoal
+  let goalType ← getMainTarget
+
+  let Expr.app (Expr.app (Expr.const `Iff _) a) b := goalType | throwError "Goal type is not of the form `a ↔ b`"
+
+  -- 1. Create new `_`s with appropriate types.
+  let mvarId1 ← mkFreshExprMVar (Expr.forallE `xxx a b .default) (userName := `red)
+  let mvarId2 ← mkFreshExprMVar (Expr.forallE `yyy b a .default) (userName := `blue)
+
+  -- 2. Assign the main goal to the expression `Iff.intro _ _`.
+  mvarId.assign (mkAppN (Expr.const `Iff.intro []) #[a, b, mvarId1, mvarId2])
+
+  -- 3. Report the new `_`s to Lean as the new goals.
+  modify fun _ => { goals := [mvarId1.mvarId!, mvarId2.mvarId!] }
+
+open Lean Elab Tactic Meta in
+elab "step_2" : tactic => withMainContext do
+  let goalId ← getMainGoal
+  let goalType ← getMainTarget
+  let Expr.forallE _
+    (.app (.app (.const `And []) a) b)
+    (.app (.app (.const `And []) c) d)
+    .default := goalType | throwError "Goal type is not of the form `a ∧ b → c ∧ d`."
+  if ← isExprDefEq a d then
+    if ← isExprDefEq b c then
+      dbg_trace s!"step_2 happy"
+      -- try with `mkLambdaFVars`?
+      let prf ← withLocalDecl `pq .default (.app (.app (.const `And [])))
+      closeMainGoal `step_2
+    else
+      throwError m!"In goal {goalType}, {c} ≠ {b}"
+  else
+    throwError m!"In goal {goalType}, {a} ≠ {d}"
+
+example (p q r) : p ∧ q → q ∧ r := by
+  step_2
+  sorry
+
+example (p q r) : p ∧ q → r ∧ p := by
+  step_2
+  sorry
+
+theorem gradual (p q : Prop) : p ∧ q ↔ q ∧ p := by
+  step_1
+  step_2
+  -- step_3
+  -- step_4
+  all_goals sorry
