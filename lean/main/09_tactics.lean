@@ -744,6 +744,26 @@ elab "step_1" : tactic => withMainContext do
   modify fun _ => { goals := [mvarId1.mvarId!, mvarId2.mvarId!] }
 
 open Lean Elab Tactic Meta in
+elab "step_2_clean_up" : tactic => withMainContext do
+  let goalId ← getMainGoal
+  let goalType ← getMainTarget
+  let Expr.forallE _
+    (.app (.app (.const `And []) a) b)
+    (.app (.app (.const `And []) c) d)
+    .default := goalType | throwError "Goal type is not of the form `a ∧ b → c ∧ d`."
+  if ← isExprDefEq a d then
+    if ← isExprDefEq b c then
+      let introsGoalId ← withLocalDecl `hpq .default (.app (.app (.const `And []) a) b) λ pq ↦ do
+        let introsMVarId ← mkFreshExprMVar (←mkAppM ``And #[b, a]) .syntheticOpaque `conjPQ
+        goalId.assign (← mkLambdaFVars #[pq] introsMVarId)
+        return introsMVarId
+      modify fun _ => { goals := [introsGoalId.mvarId!] }
+    else
+      throwError m!"In goal {goalType}, {c} ≠ {b}"
+  else
+    throwError m!"In goal {goalType}, {a} ≠ {d}"
+
+open Lean Elab Tactic Meta in
 elab "step_2" : tactic => withMainContext do
   let goalId ← getMainGoal
   let goalType ← getMainTarget
@@ -753,8 +773,6 @@ elab "step_2" : tactic => withMainContext do
     .default := goalType | throwError "Goal type is not of the form `a ∧ b → c ∧ d`."
   if ← isExprDefEq a d then
     if ← isExprDefEq b c then
-      dbg_trace s!"step_2 happy"
-      -- try with `mkLambdaFVars`?
       let prf ← withLocalDecl `pq .default (.app (.app (.const `And []) a) b) λ pq ↦ do
         let p ← mkAppM ``And.left #[pq]
         let q ← mkAppM ``And.right #[pq]
@@ -765,6 +783,12 @@ elab "step_2" : tactic => withMainContext do
       throwError m!"In goal {goalType}, {c} ≠ {b}"
   else
     throwError m!"In goal {goalType}, {a} ≠ {d}"
+
+open Lean Elab Tactic Meta in
+elab "step_3" : tactic => withMainContext do
+  let goalId ← getMainGoal
+  let goalType ← getMainTarget
+  let Expr.app (.app (.const `And []) a) b := goalType | throwError "Goal is not of the form `a ∧ b`"
 
 #check_failure (
   show (∀ (p q r : Prop), p ∧ q → q ∧ r) from by
@@ -786,6 +810,7 @@ example (p q) : p ∧ q → q ∧ p := by
 theorem gradual (p q : Prop) : p ∧ q ↔ q ∧ p := by
   step_1
   step_2
-  -- step_3
+  step_2_clean_up
+  step_3
   -- step_4
   all_goals sorry
