@@ -755,20 +755,33 @@ elab "step_2" : tactic => withMainContext do
     if ← isExprDefEq b c then
       dbg_trace s!"step_2 happy"
       -- try with `mkLambdaFVars`?
-      let prf ← withLocalDecl `pq .default (.app (.app (.const `And [])))
-      closeMainGoal `step_2
+      let prf ← withLocalDecl `pq .default (.app (.app (.const `And []) a) b) λ pq ↦ do
+        let p ← mkAppM ``And.left #[pq]
+        let q ← mkAppM ``And.right #[pq]
+        let body ← mkAppM ``And.intro #[q, p]
+        mkLambdaFVars #[pq] body
+      closeMainGoal `step_2 prf
     else
       throwError m!"In goal {goalType}, {c} ≠ {b}"
   else
     throwError m!"In goal {goalType}, {a} ≠ {d}"
 
-example (p q r) : p ∧ q → q ∧ r := by
-  step_2
-  sorry
+#check_failure (
+  show (∀ (p q r : Prop), p ∧ q → q ∧ r) from by
+    intro p q r
+    step_2
+    sorry
+)
 
-example (p q r) : p ∧ q → r ∧ p := by
+#check_failure (
+  show (∀ (p q r : Prop), p ∧ q → r ∧ p) from by
+    intro p q r
+    step_2
+    sorry
+)
+
+example (p q) : p ∧ q → q ∧ p := by
   step_2
-  sorry
 
 theorem gradual (p q : Prop) : p ∧ q ↔ q ∧ p := by
   step_1
