@@ -894,3 +894,21 @@ example (A B C : Prop) : A → B → C → (A ∧ B) ∧ C := by
   assumption
   assumption
   assumption
+
+/-
+3. In the first exercise, you created your own `intro` in `step_2` (with a hardcoded hypothesis name, but the basics are the same). When writing tactics, we usually want to use functions such as `intro`, `intro1`, `intro1P`, `introN` or `introNP`.
+
+    For each of the points below, create a tactic `introductor` (one per each point), that turns the goal `(ab: a = b) → (bc: b = c) → (a = c)`:
+
+    Hint: **"P"** in `intro1P` and `introNP` stands for **"Preserve"**.
+-/
+
+-- **a)** into the goal `(a = c)` with hypotheses `(ab✝: a = b)` and `(bc✝: b = c)`.
+
+-- **b)** into the goal `(bc: b = c) → (a = c)` with hypothesis `(ab: a = b)`.
+
+-- **c)** into the goal `(bc: b = c) → (a = c)` with hypothesis `(hello: a = b)`.
+
+example (a b c : Nat) : (ab: a = b) → (bc: b = c) → (a = c) := by
+  -- introductor
+  sorry
