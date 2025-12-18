@@ -789,6 +789,24 @@ elab "step_3" : tactic => withMainContext do
   let goalId ← getMainGoal
   let goalType ← getMainTarget
   let Expr.app (.app (.const `And []) a) b := goalType | throwError "Goal is not of the form `a ∧ b`"
+  let mvarId1 ← mkFreshExprMVar a (userName := `conjLeft)
+  let mvarId2 ← mkFreshExprMVar b (userName := `conjRight)
+  let prf ← mkAppM ``And.intro #[mvarId1, mvarId2]
+  goalId.assign prf
+  modify λ _ ↦ { goals := [mvarId1.mvarId!, mvarId2.mvarId!] }
+
+open Lean Elab Tactic Meta in
+elab "step_4" : tactic => withMainContext do
+  let goals ← Lean.Elab.Tactic.getGoals
+  for goal in goals do
+    let ctx ← getLCtx
+    for decl in ctx do
+      let Expr.app (.app (.const `And []) a) b := decl.type | continue
+      if ←isDefEq (←goal.getType) a then
+        goal.assign (←mkAppM ``And.left #[decl.toExpr])
+      if ←isDefEq (←goal.getType) b then
+        goal.assign (←mkAppM ``And.right #[decl.toExpr])
+
 
 #check_failure (
   show (∀ (p q r : Prop), p ∧ q → q ∧ r) from by
@@ -812,5 +830,4 @@ theorem gradual (p q : Prop) : p ∧ q ↔ q ∧ p := by
   step_2
   step_2_clean_up
   step_3
-  -- step_4
-  all_goals sorry
+  step_4
