@@ -904,11 +904,30 @@ example (A B C : Prop) : A → B → C → (A ∧ B) ∧ C := by
 -/
 
 -- **a)** into the goal `(a = c)` with hypotheses `(ab✝: a = b)` and `(bc✝: b = c)`.
+open Lean Elab Tactic Meta in
+elab "introductora" : tactic => withMainContext do
+  liftMetaTactic λ goalId ↦ do
+    -- Having the dagger `✝` means its a "hidden" name apparently...
+    let (_, newGoalId) ← goalId.introN 2 (["ab✝", "bc✝"].map Name.mkSimple)
+    return [newGoalId]
 
 -- **b)** into the goal `(bc: b = c) → (a = c)` with hypothesis `(ab: a = b)`.
+open Lean Elab Tactic Meta in
+elab "introductorb" : tactic => withMainContext do
+  let goalId ← getMainGoal
+  -- New goal after introduciton.
+  let (_, goalMVarId) ← goalId.intro1P
+  dbg_trace s!"hyp : {←goalMVarId.getType}"
+  replaceMainGoal [goalMVarId]
+
 
 -- **c)** into the goal `(bc: b = c) → (a = c)` with hypothesis `(hello: a = b)`.
+open Lean Elab Tactic Meta in
+elab "introductorc" : tactic => withMainContext do
+  liftMetaTactic λ goalId ↦ do
+    let (_, newGoalId) ← goalId.intro `hello
+    return [newGoalId]
 
 example (a b c : Nat) : (ab: a = b) → (bc: b = c) → (a = c) := by
-  -- introductor
+  introductorc
   sorry

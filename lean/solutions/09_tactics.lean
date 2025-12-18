@@ -183,7 +183,7 @@ elab "introductor_c" : tactic => do
 -- `introNP` - **intro many**, preserve the original names
 
 example (a b c : Nat) : (ab: a = b) → (bc: b = c) → (a = c) := by
-  introductor_a
+  -- introductor_a
   -- introductor_b
-  -- introductor_c
+  introductor_c
   sorry
