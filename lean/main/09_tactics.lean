@@ -874,7 +874,7 @@ elab "forker1" : tactic => do
 open Lean Elab Tactic Meta in
 elab "forker2" : tactic => do
   liftMetaTactic λ mvarId ↦ do
-    let goalType ← inferType <| mkMVar mvarId
+    let goalType ← mvarId.getType
 
     let (Expr.app (.app (.const `And []) p) q) := goalType
       | Lean.Meta.throwTacticEx `forker mvarId (m!"Goal is not of the form P ∧ Q")
