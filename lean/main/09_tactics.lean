@@ -779,6 +779,7 @@ elab "step_2" : tactic => withMainContext do
         let body ← mkAppM ``And.intro #[q, p]
         mkLambdaFVars #[pq] body
       closeMainGoal `step_2 prf
+      evalTactic (← `(tactic| step_2_clean_up))
     else
       throwError m!"In goal {goalType}, {c} ≠ {b}"
   else
@@ -822,12 +823,8 @@ elab "step_4" : tactic => withMainContext do
     sorry
 )
 
-example (p q) : p ∧ q → q ∧ p := by
-  step_2
-
 theorem gradual (p q : Prop) : p ∧ q ↔ q ∧ p := by
   step_1
   step_2
-  step_2_clean_up
   step_3
   step_4
