@@ -828,3 +828,37 @@ theorem gradual (p q : Prop) : p ∧ q ↔ q ∧ p := by
   step_2
   step_3
   step_4
+
+/-
+2. In the first exercise, we used lower-level `modify` api to update our goals.
+    `liftMetaTactic`, `setGoals`, `appendGoals`, `replaceMainGoal`, `closeMainGoal`, etc. are all syntax sugars on top of `modify fun s : State => { s with goals := myMvarIds }`.
+    Please rewrite the `forker` tactic with:
+
+    **a)** `liftMetaTactic`
+    **b)** `setGoals`
+    **c)** `replaceMainGoal`
+-/
+
+open Lean Elab Tactic Meta in
+elab "forker" : tactic => do
+  let mvarId ← getMainGoal
+  let goalType ← getMainTarget
+
+  let (Expr.app (.app (.const `And []) p) q) := goalType
+    | Lean.Meta.throwTacticEx `forker mvarId (m!"Goal is not of the form P ∧ Q")
+
+  mvarId.withContext do
+  let mvarIdP ← mkFreshExprMVar p (userName := `red)
+  let mvarIdQ ← mkFreshExprMVar q (userName := `blue)
+
+  let proofTerm := mkAppN (Expr.const `And.intro []) #[p, q, mvarIdP, mvarIdQ]
+  mvarId.assign proofTerm
+  replaceMainGoal [mvarIdP.mvarId!, mvarIdQ.mvarId!]
+
+example (A B C : Prop) : A → B → C → (A ∧ B) ∧ C := by
+  intro hA hB hC
+  forker
+  forker
+  assumption
+  assumption
+  assumption
