@@ -840,7 +840,7 @@ theorem gradual (p q : Prop) : p ∧ q ↔ q ∧ p := by
 -/
 
 open Lean Elab Tactic Meta in
-elab "forker" : tactic => do
+elab "forker0" : tactic => do
   let mvarId ← getMainGoal
   let goalType ← getMainTarget
 
@@ -855,10 +855,26 @@ elab "forker" : tactic => do
   mvarId.assign proofTerm
   replaceMainGoal [mvarIdP.mvarId!, mvarIdQ.mvarId!]
 
+open Lean Elab Tactic Meta in
+elab "forker1" : tactic => do
+  let goalType ← getMainTarget
+  liftMetaTactic λ mvarId ↦ do
+
+    let (Expr.app (.app (.const `And []) p) q) := goalType
+      | Lean.Meta.throwTacticEx `forker mvarId (m!"Goal is not of the form P ∧ Q")
+
+    mvarId.withContext do
+    let mvarIdP ← mkFreshExprMVar p (userName := `red)
+    let mvarIdQ ← mkFreshExprMVar q (userName := `blue)
+
+    let proofTerm := mkAppN (Expr.const `And.intro []) #[p, q, mvarIdP, mvarIdQ]
+    mvarId.assign proofTerm
+    return [mvarIdP.mvarId!, mvarIdQ.mvarId!]
+
 example (A B C : Prop) : A → B → C → (A ∧ B) ∧ C := by
   intro hA hB hC
-  forker
-  forker
+  forker1
+  forker1
   assumption
   assumption
   assumption
