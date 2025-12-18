@@ -871,10 +871,26 @@ elab "forker1" : tactic => do
     mvarId.assign proofTerm
     return [mvarIdP.mvarId!, mvarIdQ.mvarId!]
 
+open Lean Elab Tactic Meta in
+elab "forker2" : tactic => do
+  liftMetaTactic λ mvarId ↦ do
+    let goalType ← inferType <| mkMVar mvarId
+
+    let (Expr.app (.app (.const `And []) p) q) := goalType
+      | Lean.Meta.throwTacticEx `forker mvarId (m!"Goal is not of the form P ∧ Q")
+
+    mvarId.withContext do
+    let mvarIdP ← mkFreshExprMVar p (userName := `red)
+    let mvarIdQ ← mkFreshExprMVar q (userName := `blue)
+
+    let proofTerm := mkAppN (Expr.const `And.intro []) #[p, q, mvarIdP, mvarIdQ]
+    mvarId.assign proofTerm
+    return [mvarIdP.mvarId!, mvarIdQ.mvarId!]
+
 example (A B C : Prop) : A → B → C → (A ∧ B) ∧ C := by
   intro hA hB hC
-  forker1
-  forker1
+  forker2
+  forker2
   assumption
   assumption
   assumption
